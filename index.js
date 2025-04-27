@@ -48,7 +48,7 @@ app.post('/webhook', async (req, res) => {
       console.log('Compuerta abierta, reenviando evento a Make.');
 
       // Marcar el primer mensaje
-      body.pasar_a_make = true;
+      body.entry[0].messaging[0].pasar_a_make = true;
 
       isGateOpen = false;
 
