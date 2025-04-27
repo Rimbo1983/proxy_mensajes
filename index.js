@@ -1,10 +1,8 @@
-// Instagram Webhook Proxy for Make with File-based Deduplication (FINAL)
+// Instagram Webhook Proxy for Make - Versión Compuerta (Gate)
 
 const express = require('express');
 const axios = require('axios');
 const bodyParser = require('body-parser');
-const fs = require('fs');
-const path = require('path');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -13,9 +11,10 @@ app.use(bodyParser.json());
 
 // Tu Webhook real de Make
 const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/6mnxysnihqg53lmoeg88kp4t3ldu1rgh';
-const VERIFY_TOKEN = 'eurekaToken2025'; // El mismo que pusiste en Meta Developers
+const VERIFY_TOKEN = 'eurekaToken2025'; // Token de verificación en Meta Developers
 
-const LAST_SENDER_FILE = path.join(__dirname, 'last_sender.json');
+// GATE FLAG: Compuerta de control
+let isGateOpen = true;
 
 // Webhook verification endpoint (GET)
 app.get('/webhook', (req, res) => {
@@ -47,32 +46,25 @@ app.post('/webhook', async (req, res) => {
 
     const messagingEvent = body.entry[0].messaging[0];
 
-    const senderId = messagingEvent.sender.id;
-    const timestamp = Math.floor(messagingEvent.timestamp / 1000);
+    // SOLO reenviar el primer evento si la compuerta está abierta
+    if (isGateOpen) {
+      console.log('Compuerta abierta, reenviando evento a Make.');
 
-    let lastSenderData = {};
+      // Cerrar la compuerta
+      isGateOpen = false;
 
-    if (fs.existsSync(LAST_SENDER_FILE)) {
-      const rawData = fs.readFileSync(LAST_SENDER_FILE);
-      lastSenderData = JSON.parse(rawData);
+      // Reenviar a Make
+      await axios.post(MAKE_WEBHOOK_URL, body);
+
+      // Reabrir compuerta después de 2 segundos
+      setTimeout(() => {
+        isGateOpen = true;
+        console.log('Compuerta reabierta.');
+      }, 2000);
+
+    } else {
+      console.log('Compuerta cerrada, ignorando evento.');
     }
-
-    const currentTime = Date.now() / 1000;
-
-    if (lastSenderData.senderId === senderId && (currentTime - lastSenderData.timestamp) < 2) {
-      console.log('Duplicate detected, ignoring event:', senderId);
-      return res.sendStatus(200);
-    }
-
-    // Update last sender file
-    fs.writeFileSync(LAST_SENDER_FILE, JSON.stringify({
-      senderId: senderId,
-      timestamp: currentTime
-    }));
-
-    console.log('Forwarding event to Make:', senderId);
-
-    await axios.post(MAKE_WEBHOOK_URL, body);
 
     res.sendStatus(200);
 
