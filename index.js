@@ -1,4 +1,4 @@
-// Instagram Webhook Proxy for Make - Versión Compuerta (Gate)
+// Instagram Webhook Proxy for Make - Versión con Marca de Primer Mensaje
 
 const express = require('express');
 const axios = require('axios');
@@ -44,19 +44,17 @@ app.post('/webhook', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    const messagingEvent = body.entry[0].messaging[0];
-
-    // SOLO reenviar el primer evento si la compuerta está abierta
     if (isGateOpen) {
       console.log('Compuerta abierta, reenviando evento a Make.');
 
-      // Cerrar la compuerta
+      // Marcar el primer mensaje
+      body.pasar_a_make = true;
+
       isGateOpen = false;
 
-      // Reenviar a Make
       await axios.post(MAKE_WEBHOOK_URL, body);
 
-      // Reabrir compuerta después de 2 segundos
+      // Reabrir la compuerta después de 2 segundos
       setTimeout(() => {
         isGateOpen = true;
         console.log('Compuerta reabierta.');
