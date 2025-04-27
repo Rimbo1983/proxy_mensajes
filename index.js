@@ -1,4 +1,4 @@
-// Simple Instagram Webhook Proxy for Make
+// Instagram Webhook Proxy for Make
 
 const express = require('express');
 const axios = require('axios');
@@ -9,12 +9,32 @@ const port = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 
+// Replace this with your actual Make Webhook URL
+const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/TU_WEBHOOK_ID_AQUI'; // <-- Reemplazar aquí
+const VERIFY_TOKEN = 'eurekaToken2025'; // <-- El mismo que pongas en Meta Developers
+
 // Memory store for deduplication
 const eventStore = new Map();
 
-// Replace this with your actual Make Webhook URL
-const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/TU_WEBHOOK_ID_AQUI'; // <-- ACA poné tu URL de Make
+// Webhook verification endpoint (GET)
+app.get('/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
 
+  if (mode && token) {
+    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+      console.log('WEBHOOK_VERIFIED');
+      res.status(200).send(challenge);
+    } else {
+      res.sendStatus(403); 
+    }
+  } else {
+    res.sendStatus(400);
+  }
+});
+
+// Webhook event receiver (POST)
 app.post('/webhook', async (req, res) => {
   try {
     const body = req.body;
@@ -53,6 +73,7 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
+// Root test endpoint
 app.get('/', (req, res) => {
   res.send('Instagram Webhook Proxy is running');
 });
