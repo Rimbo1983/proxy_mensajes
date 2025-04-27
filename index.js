@@ -1,21 +1,21 @@
-// Instagram Webhook Proxy for Make (Version: Block after first event)
+// Instagram Webhook Proxy for Make with File-based Deduplication (FINAL)
 
 const express = require('express');
 const axios = require('axios');
 const bodyParser = require('body-parser');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 
-// Replace this with your actual Make Webhook URL
-const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/6mnxysnihqg53lmoeg88kp4t3ldu1rgh'; // <-- Reemplazar aquí
-const VERIFY_TOKEN = 'eurekaToken2025'; // <-- El mismo que pongas en Meta Developers
+// Tu Webhook real de Make
+const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/6mnxysnihqg53lmoeg88kp4t3ldu1rgh';
+const VERIFY_TOKEN = 'eurekaToken2025'; // El mismo que pusiste en Meta Developers
 
-// Memory stores
-const eventStore = new Map();
-const senderBlockList = new Set(); // New: to block repeated sends
+const LAST_SENDER_FILE = path.join(__dirname, 'last_sender.json');
 
 // Webhook verification endpoint (GET)
 app.get('/webhook', (req, res) => {
@@ -49,30 +49,28 @@ app.post('/webhook', async (req, res) => {
 
     const senderId = messagingEvent.sender.id;
     const timestamp = Math.floor(messagingEvent.timestamp / 1000);
-    const text = messagingEvent.message && messagingEvent.message.text ? messagingEvent.message.text : '';
 
-    const eventKey = `${senderId}_${timestamp}_${text}`;
+    let lastSenderData = {};
 
-    // Block multiple sends from same sender within 2 seconds
-    if (senderBlockList.has(senderId)) {
-      console.log('Sender temporarily blocked:', senderId);
+    if (fs.existsSync(LAST_SENDER_FILE)) {
+      const rawData = fs.readFileSync(LAST_SENDER_FILE);
+      lastSenderData = JSON.parse(rawData);
+    }
+
+    const currentTime = Date.now() / 1000;
+
+    if (lastSenderData.senderId === senderId && (currentTime - lastSenderData.timestamp) < 2) {
+      console.log('Duplicate detected, ignoring event:', senderId);
       return res.sendStatus(200);
     }
 
-    if (eventStore.has(eventKey)) {
-      console.log('Duplicate event ignored:', eventKey);
-      return res.sendStatus(200);
-    }
+    // Update last sender file
+    fs.writeFileSync(LAST_SENDER_FILE, JSON.stringify({
+      senderId: senderId,
+      timestamp: currentTime
+    }));
 
-    // First time sender, forward event and block for 2 seconds
-    senderBlockList.add(senderId);
-    setTimeout(() => senderBlockList.delete(senderId), 2000); // Unblock sender after 2s
-
-    // Store event key for deduplication backup
-    eventStore.set(eventKey, true);
-    setTimeout(() => eventStore.delete(eventKey), 5000);
-
-    console.log('Forwarding event to Make:', eventKey);
+    console.log('Forwarding event to Make:', senderId);
 
     await axios.post(MAKE_WEBHOOK_URL, body);
 
