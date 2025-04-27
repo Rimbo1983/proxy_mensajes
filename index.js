@@ -1,4 +1,4 @@
-// Instagram Webhook Proxy for Make
+// Instagram Webhook Proxy for Make (Version: Block after first event)
 
 const express = require('express');
 const axios = require('axios');
@@ -13,8 +13,9 @@ app.use(bodyParser.json());
 const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/6mnxysnihqg53lmoeg88kp4t3ldu1rgh'; // <-- Reemplazar aquí
 const VERIFY_TOKEN = 'eurekaToken2025'; // <-- El mismo que pongas en Meta Developers
 
-// Memory store for deduplication
+// Memory stores
 const eventStore = new Map();
+const senderBlockList = new Set(); // New: to block repeated sends
 
 // Webhook verification endpoint (GET)
 app.get('/webhook', (req, res) => {
@@ -27,7 +28,7 @@ app.get('/webhook', (req, res) => {
       console.log('WEBHOOK_VERIFIED');
       res.status(200).send(challenge);
     } else {
-      res.sendStatus(403); 
+      res.sendStatus(403);
     }
   } else {
     res.sendStatus(400);
@@ -47,17 +48,27 @@ app.post('/webhook', async (req, res) => {
     const messagingEvent = body.entry[0].messaging[0];
 
     const senderId = messagingEvent.sender.id;
-    const timestamp = Math.floor(messagingEvent.timestamp / 1000); // round to seconds
+    const timestamp = Math.floor(messagingEvent.timestamp / 1000);
     const text = messagingEvent.message && messagingEvent.message.text ? messagingEvent.message.text : '';
 
     const eventKey = `${senderId}_${timestamp}_${text}`;
+
+    // Block multiple sends from same sender within 2 seconds
+    if (senderBlockList.has(senderId)) {
+      console.log('Sender temporarily blocked:', senderId);
+      return res.sendStatus(200);
+    }
 
     if (eventStore.has(eventKey)) {
       console.log('Duplicate event ignored:', eventKey);
       return res.sendStatus(200);
     }
 
-    // Store event key for 5 seconds
+    // First time sender, forward event and block for 2 seconds
+    senderBlockList.add(senderId);
+    setTimeout(() => senderBlockList.delete(senderId), 2000); // Unblock sender after 2s
+
+    // Store event key for deduplication backup
     eventStore.set(eventKey, true);
     setTimeout(() => eventStore.delete(eventKey), 5000);
 
