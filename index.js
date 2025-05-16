@@ -15,7 +15,7 @@ const VERIFY_TOKEN = 'eurekaToken2025';
 // Estructura para agrupar mensajes por usuario
 const userMessageBuffer = {};
 const userTimers = {};
-const AGGREGATION_WINDOW = 10000; // 10 segundos
+const AGGREGATION_WINDOW = 15000; // 15 segundos
 
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
