@@ -9,7 +9,7 @@ const port = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 
-const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/4s7wx0ykfgbjal58ehkh9jb2xwr4ced6';
+const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/kwlyfg2erb2pswddghg1kkbptq4m330n';
 const VERIFY_TOKEN = 'eurekaToken2025';
 
 // Estructura para agrupar mensajes por usuario
