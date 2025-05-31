@@ -1,4 +1,4 @@
-// Simple Instagram Webhook Proxy for Make
+// Proxy Webhook para ManyChat → Make
 
 const express = require('express');
 const axios = require('axios');
@@ -9,54 +9,29 @@ const port = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 
-// Memory store for deduplication
-const eventStore = new Map();
-
-// Replace this with your actual Make Webhook URL
-const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/TU_WEBHOOK_ID_AQUI';
+// Tu webhook de Make ya insertado aquí:
+const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/kwlyfg2erb2pswddghg1kkbptq4m330n';
 
 app.post('/webhook', async (req, res) => {
   try {
-    const body = req.body;
+    const data = req.body;
 
-    if (!body.entry || !body.entry[0] || !body.entry[0].messaging || !body.entry[0].messaging[0]) {
-      console.log('Webhook received but no valid messaging event.');
-      return res.sendStatus(200);
-    }
+    console.log('Mensaje recibido desde ManyChat:', data);
 
-    const messagingEvent = body.entry[0].messaging[0];
+    // Reenviar directamente a Make
+    await axios.post(MAKE_WEBHOOK_URL, data);
 
-    const senderId = messagingEvent.sender.id;
-    const timestamp = Math.floor(messagingEvent.timestamp / 1000); // round to seconds
-    const text = messagingEvent.message && messagingEvent.message.text ? messagingEvent.message.text : '';
-
-    const eventKey = `${senderId}_${timestamp}_${text}`;
-
-    if (eventStore.has(eventKey)) {
-      console.log('Duplicate event ignored:', eventKey);
-      return res.sendStatus(200);
-    }
-
-    // Store event key for 5 seconds
-    eventStore.set(eventKey, true);
-    setTimeout(() => eventStore.delete(eventKey), 5000);
-
-    console.log('Forwarding event to Make:', eventKey);
-
-    await axios.post(MAKE_WEBHOOK_URL, body);
-
-    res.sendStatus(200);
-
+    res.status(200).send('OK');
   } catch (error) {
-    console.error('Error handling webhook:', error);
-    res.sendStatus(500);
+    console.error('Error al reenviar a Make:', error.message);
+    res.status(500).send('Error interno');
   }
 });
 
 app.get('/', (req, res) => {
-  res.send('Instagram Webhook Proxy is running');
+  res.send('Proxy para ManyChat está corriendo.');
 });
 
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  console.log(`Servidor escuchando en el puerto ${port}`);
 });
