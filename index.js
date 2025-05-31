@@ -1,5 +1,3 @@
-// Instagram Webhook Proxy for Make - Versión con Agrupación de Mensajes por Usuario
-
 const express = require('express');
 const axios = require('axios');
 const bodyParser = require('body-parser');
@@ -9,102 +7,29 @@ const port = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 
+// Webhook real de Make
 const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/kwlyfg2erb2pswddghg1kkbptq4m330n';
-const VERIFY_TOKEN = 'eurekaToken2025';
 
-// Estructura para agrupar mensajes por usuario
-const userMessageBuffer = {};
-const userTimers = {};
-const AGGREGATION_WINDOW = 15000; // 15 segundos
-
-app.get('/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-
-  if (mode && token) {
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-      console.log('WEBHOOK_VERIFIED');
-      res.status(200).send(challenge);
-    } else {
-      res.sendStatus(403);
-    }
-  } else {
-    res.sendStatus(400);
-  }
-});
-
-app.post('/webhook', (req, res) => {
+app.post('/webhook', async (req, res) => {
   try {
-    const body = req.body;
-    if (!body.entry || !body.entry[0] || !body.entry[0].messaging || !body.entry[0].messaging[0]) {
-      console.log('Webhook received but no valid messaging event.');
-      return res.sendStatus(200);
-    }
+    const data = req.body;
 
-    const messagingEvent = body.entry[0].messaging[0];
-    const senderId = messagingEvent.sender.id;
-    const messageText = messagingEvent.message?.text;
-    const isEcho = messagingEvent.message?.is_echo;
+    console.log('📩 Mensaje recibido desde ManyChat:', data);
 
-    // Solo procesar si es un mensaje real (no echo y tiene texto)
-    if (!messageText || isEcho) {
-      return res.sendStatus(200);
-    }
+    // Reenviar a Make
+    await axios.post(MAKE_WEBHOOK_URL, data);
 
-    if (!userMessageBuffer[senderId]) {
-      userMessageBuffer[senderId] = [];
-    }
-
-    userMessageBuffer[senderId].push(messageText);
-
-    if (userTimers[senderId]) {
-      clearTimeout(userTimers[senderId]);
-    }
-
-    userTimers[senderId] = setTimeout(async () => {
-      const combinedMessage = userMessageBuffer[senderId].join(' ');
-
-      const payload = {
-        object: 'instagram',
-        entry: [
-          {
-            id: body.entry[0].id,
-            time: Date.now(),
-            messaging: [
-              {
-                sender: { id: senderId },
-                recipient: messagingEvent.recipient,
-                timestamp: Date.now(),
-                message: {
-                  text: combinedMessage
-                },
-                pasar_a_make: true
-              }
-            ]
-          }
-        ]
-      };
-
-      await axios.post(MAKE_WEBHOOK_URL, payload);
-
-      console.log('Mensaje agrupado enviado a Make:', combinedMessage);
-
-      delete userMessageBuffer[senderId];
-      delete userTimers[senderId];
-    }, AGGREGATION_WINDOW);
-
-    res.sendStatus(200);
+    res.status(200).send('OK');
   } catch (error) {
-    console.error('Error handling webhook:', error);
-    res.sendStatus(500);
+    console.error('❌ Error al reenviar a Make:', error.message);
+    res.status(500).send('Error interno');
   }
 });
 
 app.get('/', (req, res) => {
-  res.send('Instagram Webhook Proxy is running');
+  res.send('✅ Proxy para ManyChat está corriendo.');
 });
 
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  console.log(`🚀 Servidor escuchando en el puerto ${port}`);
 });
