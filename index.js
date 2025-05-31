@@ -7,8 +7,8 @@ const port = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 
-// Webhook real de Make
-const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/kwlyfg2erb2pswddghg1kkbptq4m330n';
+// Webhook de destino en Make (nuevo)
+const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/41c6xuwixq15wxc1p8ugu6syon72ys7w';
 
 app.post('/webhook', async (req, res) => {
   try {
@@ -16,7 +16,7 @@ app.post('/webhook', async (req, res) => {
 
     console.log('📩 Mensaje recibido desde ManyChat:', data);
 
-    // Reenviar a Make
+    // Reenvía directamente a Make
     await axios.post(MAKE_WEBHOOK_URL, data);
 
     res.status(200).send('OK');
@@ -27,9 +27,9 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('✅ Proxy para ManyChat está corriendo.');
+  res.send('✅ Proxy para ManyChat activo');
 });
 
 app.listen(port, () => {
-  console.log(`🚀 Servidor escuchando en el puerto ${port}`);
+  console.log(`🚀 Servidor activo en el puerto ${port}`);
 });
