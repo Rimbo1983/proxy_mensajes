@@ -7,18 +7,21 @@ const port = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 
-// Webhook de destino en Make (nuevo)
+// 1. CONFIGS
 const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/41c6xuwixq15wxc1p8ugu6syon72ys7w';
+const MANYCHAT_API_KEY = '807862065951550:771c99826f7011f4d47ab018e4207b60';
+const FLOW_NS = 'content20250531215213_464672';
 
+// 2. Memoria temporal para respuestas GPT
+const respuestas = new Map();
+
+// 3. Endpoint para ManyChat → Make
 app.post('/webhook', async (req, res) => {
   try {
     const data = req.body;
-
     console.log('📩 Mensaje recibido desde ManyChat:', data);
 
-    // Reenvía directamente a Make
     await axios.post(MAKE_WEBHOOK_URL, data);
-
     res.status(200).send('OK');
   } catch (error) {
     console.error('❌ Error al reenviar a Make:', error.message);
@@ -26,8 +29,54 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
+// 4. Endpoint para Make → lanza flow y guarda respuesta
+app.post('/respuesta-gpt', async (req, res) => {
+  const { subscriber_id, respuesta } = req.body;
+
+  if (!subscriber_id || !respuesta) {
+    return res.status(400).send('Faltan campos requeridos');
+  }
+
+  respuestas.set(subscriber_id, respuesta);
+
+  try {
+    await axios.post(
+      'https://api.manychat.com/fb/sending/sendFlow',
+      {
+        subscriber_id,
+        flow_ns: FLOW_NS
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${MANYCHAT_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    console.log(`✅ Flow lanzado a ${subscriber_id}`);
+    res.send('OK');
+  } catch (error) {
+    console.error('❌ Error al lanzar flow:', error.response?.data || error.message);
+    res.status(500).send('Error al lanzar flow');
+  }
+});
+
+// 5. Endpoint para que ManyChat haga GET y lea la respuesta GPT
+app.get('/respuesta', (req, res) => {
+  const subscriber_id = req.query.subscriber_id;
+
+  if (!subscriber_id || !respuestas.has(subscriber_id)) {
+    return res.status(404).send('No se encontró respuesta');
+  }
+
+  const respuestaGPT = respuestas.get(subscriber_id);
+  res.json({ respuestaGPT });
+});
+
+// 6. Página de prueba
 app.get('/', (req, res) => {
-  res.send('✅ Proxy para ManyChat activo');
+  res.send('🟢 Proxy activo para ManyChat ↔ Make ↔ GPT');
 });
 
 app.listen(port, () => {
