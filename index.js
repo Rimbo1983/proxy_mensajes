@@ -62,7 +62,7 @@ app.post('/respuesta-gpt', async (req, res) => {
   }
 });
 
-// 5. Endpoint para que ManyChat haga GET y lea la respuesta GPT
+// 5. Endpoint compatible con ManyChat v2 (GET)
 app.get('/respuesta', (req, res) => {
   const subscriber_id = req.query.subscriber_id;
 
@@ -71,7 +71,18 @@ app.get('/respuesta', (req, res) => {
   }
 
   const respuestaGPT = respuestas.get(subscriber_id);
-  res.json({ respuestaGPT });
+
+  res.json({
+    version: "v2",
+    content: {
+      messages: [
+        {
+          type: "text",
+          text: respuestaGPT
+        }
+      ]
+    }
+  });
 });
 
 // 6. Página de prueba
