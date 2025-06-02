@@ -10,7 +10,6 @@ const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/41c6xuwixq15wxc1p8ugu6syon72
 const MANYCHAT_API_KEY = '807862065951550:771c99826f7011f4d47ab018e4207b60';
 const FLOW_NS = 'content20250531215213_464672'; // Flow que usará {{user.respuestaGPT}}
 
-// Middleware
 app.use(bodyParser.json());
 
 // 1. ManyChat → Make (reenviar mensaje)
@@ -27,7 +26,7 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// 2. Make → guardar respuesta y lanzar flow
+// 2. Make → guardar respuesta y lanzar flow con pausa
 app.post('/respuesta-gpt', async (req, res) => {
   const { subscriber_id, respuesta } = req.body;
 
@@ -36,7 +35,7 @@ app.post('/respuesta-gpt', async (req, res) => {
   }
 
   try {
-    // Guardar en el campo personalizado
+    // 1. Guardar en el campo personalizado
     await axios.post(
       'https://api.manychat.com/fb/subscriber/setCustomFieldByName',
       {
@@ -54,7 +53,10 @@ app.post('/respuesta-gpt', async (req, res) => {
 
     console.log(`✅ Campo respuestaGPT guardado para ${subscriber_id}`);
 
-    // Lanzar el flow
+    // 2. Esperar 2 segundos para asegurar que el campo se guarde
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 3. Lanzar el flow
     await axios.post(
       'https://api.manychat.com/fb/sending/sendFlow',
       {
@@ -77,12 +79,11 @@ app.post('/respuesta-gpt', async (req, res) => {
   }
 });
 
-// 3. Página principal de prueba
+// 3. Página de test
 app.get('/', (req, res) => {
   res.send('🟢 Proxy activo: ManyChat ↔ Make ↔ GPT');
 });
 
-// Iniciar servidor
 app.listen(port, () => {
   console.log(`🚀 Servidor activo en el puerto ${port}`);
 });
