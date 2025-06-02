@@ -12,7 +12,7 @@ const FLOW_NS = 'content20250531215213_464672'; // Flow que usará {{user.respue
 
 app.use(bodyParser.json());
 
-// 🧠 Cola de procesamiento
+// 🧠 Cola de procesamiento (respuestas de Make hacia ManyChat)
 const colaMensajes = [];
 
 // ⏱️ Procesador de cola (cada 2 segundos)
@@ -59,15 +59,48 @@ setInterval(async () => {
   }
 }, 2000);
 
-// 1. ManyChat → Make (reenviar mensaje)
+// 🔁 Buffer de mensajes por usuario (agrupación por 15 segundos)
+const bufferUsuarios = {}; // { subscriber_id: { mensajes: [], timer: Timeout } }
+
+// 1. ManyChat → Make (agrupador por usuario)
 app.post('/webhook', async (req, res) => {
   try {
-    const data = req.body;
-    console.log('📩 Mensaje recibido desde ManyChat:', data);
-    await axios.post(MAKE_WEBHOOK_URL, data);
-    res.status(200).send('OK');
+    const { subscriber_id, message } = req.body;
+
+    if (!subscriber_id || !message || !message.text) {
+      return res.status(400).send('Faltan datos');
+    }
+
+    const texto = message.text.trim();
+
+    if (bufferUsuarios[subscriber_id]) {
+      // Ya existe: acumulamos el mensaje
+      bufferUsuarios[subscriber_id].mensajes.push(texto);
+    } else {
+      // No existe: iniciamos nueva agrupación
+      bufferUsuarios[subscriber_id] = {
+        mensajes: [texto],
+        timer: setTimeout(async () => {
+          const mensajesAgrupados = bufferUsuarios[subscriber_id].mensajes.join('\n');
+
+          try {
+            await axios.post(MAKE_WEBHOOK_URL, {
+              subscriber_id,
+              texto: mensajesAgrupados
+            });
+            console.log(`📤 Enviado a Make (${subscriber_id}):\n${mensajesAgrupados}`);
+          } catch (error) {
+            console.error(`❌ Error enviando a Make (${subscriber_id}):`, error.response?.data || error.message);
+          }
+
+          delete bufferUsuarios[subscriber_id];
+        }, 15000)
+      };
+    }
+
+    res.status(200).send('Mensaje recibido y agrupando...');
   } catch (error) {
-    console.error('❌ Error al reenviar a Make:', error.message);
+    console.error('❌ Error en webhook agrupador:', error.message);
     res.status(500).send('Error interno');
   }
 });
