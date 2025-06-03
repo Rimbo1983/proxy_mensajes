@@ -8,7 +8,7 @@ const port = process.env.PORT || 3000;
 // CONFIGURACIÓN
 const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/41c6xuwixq15wxc1p8ugu6syon72ys7w';
 const MANYCHAT_API_KEY = '807862065951550:771c99826f7011f4d47ab018e4207b60';
-const FLOW_NS = 'content20250531215213_464672'; // Flow que usará {{user.respuestaGPT}}
+const FLOW_NS = 'content20250531215213_464672';
 
 app.use(bodyParser.json());
 
@@ -19,10 +19,9 @@ const colaMensajes = [];
 setInterval(async () => {
   if (colaMensajes.length === 0) return;
 
-  const { subscriber_id, respuesta } = colaMensajes.shift(); // Tomar el primero
+  const { subscriber_id, respuesta } = colaMensajes.shift();
 
   try {
-    // 1. Guardar en campo personalizado
     await axios.post(
       'https://api.manychat.com/fb/subscriber/setCustomFieldByName',
       {
@@ -39,7 +38,6 @@ setInterval(async () => {
     );
     console.log(`✅ Campo respuestaGPT guardado para ${subscriber_id}`);
 
-    // 2. Lanzar flow
     await axios.post(
       'https://api.manychat.com/fb/sending/sendFlow',
       {
@@ -60,9 +58,8 @@ setInterval(async () => {
 }, 2000);
 
 // 🔁 Buffer de mensajes por usuario (agrupación por 15 segundos)
-const bufferUsuarios = {}; // { id: { mensajes: [], timer: Timeout } }
+const bufferUsuarios = {};
 
-// 1. ManyChat → Make (agrupador por usuario)
 app.post('/webhook', async (req, res) => {
   try {
     const { usuario, mensaje, id, teléfono } = req.body;
@@ -83,10 +80,10 @@ app.post('/webhook', async (req, res) => {
 
           try {
             await axios.post(MAKE_WEBHOOK_URL, {
-              subscriber_id: id,
-              texto: mensajesAgrupados,
-              nombre: usuario || '',
-              telefono: teléfono || ''
+              usuario: usuario || '',
+              mensaje: mensajesAgrupados,
+              id,
+              teléfono: teléfono || ''
             });
             console.log(`📤 Enviado a Make (${id} - ${usuario}):\n${mensajesAgrupados}`);
           } catch (error) {
@@ -118,7 +115,7 @@ app.post('/respuesta-gpt', (req, res) => {
   res.send('Encolado OK');
 });
 
-// 3. Página de prueba
+// Página de prueba
 app.get('/', (req, res) => {
   res.send('🟢 Proxy activo con cola: ManyChat ↔ Make ↔ GPT');
 });
