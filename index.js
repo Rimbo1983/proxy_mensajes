@@ -60,40 +60,40 @@ setInterval(async () => {
 }, 2000);
 
 // 🔁 Buffer de mensajes por usuario (agrupación por 15 segundos)
-const bufferUsuarios = {}; // { subscriber_id: { mensajes: [], timer: Timeout } }
+const bufferUsuarios = {}; // { id: { mensajes: [], timer: Timeout } }
 
 // 1. ManyChat → Make (agrupador por usuario)
 app.post('/webhook', async (req, res) => {
   try {
-    const { subscriber_id, message } = req.body;
+    const { usuario, mensaje, id, teléfono } = req.body;
 
-    if (!subscriber_id || !message || !message.text) {
+    if (!id || !mensaje) {
       return res.status(400).send('Faltan datos');
     }
 
-    const texto = message.text.trim();
+    const texto = mensaje.trim();
 
-    if (bufferUsuarios[subscriber_id]) {
-      // Ya existe: acumulamos el mensaje
-      bufferUsuarios[subscriber_id].mensajes.push(texto);
+    if (bufferUsuarios[id]) {
+      bufferUsuarios[id].mensajes.push(texto);
     } else {
-      // No existe: iniciamos nueva agrupación
-      bufferUsuarios[subscriber_id] = {
+      bufferUsuarios[id] = {
         mensajes: [texto],
         timer: setTimeout(async () => {
-          const mensajesAgrupados = bufferUsuarios[subscriber_id].mensajes.join('\n');
+          const mensajesAgrupados = bufferUsuarios[id].mensajes.join('\n');
 
           try {
             await axios.post(MAKE_WEBHOOK_URL, {
-              subscriber_id,
-              texto: mensajesAgrupados
+              subscriber_id: id,
+              texto: mensajesAgrupados,
+              nombre: usuario || '',
+              telefono: teléfono || ''
             });
-            console.log(`📤 Enviado a Make (${subscriber_id}):\n${mensajesAgrupados}`);
+            console.log(`📤 Enviado a Make (${id} - ${usuario}):\n${mensajesAgrupados}`);
           } catch (error) {
-            console.error(`❌ Error enviando a Make (${subscriber_id}):`, error.response?.data || error.message);
+            console.error(`❌ Error enviando a Make (${id}):`, error.response?.data || error.message);
           }
 
-          delete bufferUsuarios[subscriber_id];
+          delete bufferUsuarios[id];
         }, 15000)
       };
     }
@@ -113,7 +113,6 @@ app.post('/respuesta-gpt', (req, res) => {
     return res.status(400).send('Faltan campos requeridos');
   }
 
-  // Encolar mensaje
   colaMensajes.push({ subscriber_id, respuesta });
   console.log(`📥 Mensaje encolado para ${subscriber_id}`);
   res.send('Encolado OK');
