@@ -53,7 +53,10 @@ setInterval(async () => {
     );
     console.log(`🚀 Flow lanzado a ${subscriber_id}`);
   } catch (error) {
-    console.error(`❌ Error al procesar ${subscriber_id}:`, error.response?.data || error.message);
+    console.error(`❌ Error al procesar ${subscriber_id}:`, {
+  status: error.response?.status,
+  data: error.response?.data
+});
   }
 }, 2000);
 
