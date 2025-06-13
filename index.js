@@ -54,9 +54,9 @@ setInterval(async () => {
     console.log(`🚀 Flow lanzado a ${subscriber_id}`);
   } catch (error) {
     console.error(`❌ Error al procesar ${subscriber_id}:`, {
-  status: error.response?.status,
-  data: error.response?.data
-});
+      status: error.response?.status,
+      data: error.response?.data
+    });
   }
 }, 2000);
 
@@ -86,7 +86,7 @@ app.post('/webhook', async (req, res) => {
               usuario: usuario || '',
               mensaje: mensajesAgrupados,
               id,
-              teléfono: teléfono || ''
+              teléfono: (teléfono && teléfono.trim()) || ' '
             });
             console.log(`📤 Enviado a Make (${id} - ${usuario}):\n${mensajesAgrupados}`);
           } catch (error) {
