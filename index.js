@@ -111,7 +111,7 @@ app.post('/webhook', (req, res) => {
         console.error(`❌ Error enviando a Make ${id}:`, err.response?.data || err.message);
       }
       delete bufferUsuarios[id];
-    }, 15000);
+    }, 25000);
   }
 
   res.status(200).send('Mensaje recibido y agrupando...');
