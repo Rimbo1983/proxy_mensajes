@@ -29,6 +29,8 @@ const colaMensajes = [];
 // Mapa temporal subscriber_id → plataforma
 const subscriberPlatform = {};
 
+// Usuarios que ya enviaron su batch y están esperando la respuesta completa
+const waitingUsuarios = new Set();
 
 // —— Procesador de cola (cada 2 segundos) —— //
 setInterval(async () => {
@@ -38,7 +40,7 @@ setInterval(async () => {
   const flow_ns = FLOW_NS_MAP[plataforma] || FLOW_NS_MAP.default;
 
   try {
-    // 1) Guardar custom field
+    // 1) Guardar custom field en ManyChat
     await axios.post(
       'https://api.manychat.com/fb/subscriber/setCustomFieldByName',
       {
@@ -70,11 +72,17 @@ setInterval(async () => {
       }
     );
     console.log(`🚀 Flow ${flow_ns} lanzado a ${subscriber_id}`);
+
+    // 3) Quitar al usuario de espera para que pueda enviar nuevos mensajes
+    if (waitingUsuarios.has(subscriber_id)) {
+      waitingUsuarios.delete(subscriber_id);
+      console.log(`🔄 ${subscriber_id} ya no está en espera; puede iniciar nueva ventana de 60s.`);
+    }
   } catch (err) {
     console.error(`❌ Error procesando ${subscriber_id}:`, err.response?.data || err.message);
+    // En caso de fallo, se conserva en waitingUsuarios para evitar reentradas desordenadas
   }
 }, 2000);
-
 
 // —— Endpoint ManyChat → proxy (agrupa y reenvía a Make) —— //
 app.post('/webhook', (req, res) => {
@@ -82,6 +90,12 @@ app.post('/webhook', (req, res) => {
 
   if (!id || !mensaje) {
     return res.status(400).send('Faltan datos');
+  }
+
+  // Si está esperando respuesta completa, ignoramos nuevos mensajes silenciosamente
+  if (waitingUsuarios.has(id)) {
+    console.log(`🛑 Mensaje ignorado de ${id} porque está esperando la respuesta completa anterior.`);
+    return res.sendStatus(204); // No Content
   }
 
   // Guarda la plataforma elegida por este subscriber
@@ -107,6 +121,9 @@ app.post('/webhook', (req, res) => {
           Plataforma
         });
         console.log(`📤 Enviado a Make: ${id} [${Plataforma}]\n${mensajesAgrupados}`);
+        // Marcamos que estamos esperando la respuesta completa
+        waitingUsuarios.add(id);
+        console.log(`⏳ ${id} marcado como en espera de respuesta.`);
       } catch (err) {
         console.error(`❌ Error enviando a Make ${id}:`, err.response?.data || err.message);
       }
@@ -116,7 +133,6 @@ app.post('/webhook', (req, res) => {
 
   res.status(200).send('Mensaje recibido y agrupando...');
 });
-
 
 // —— Endpoint Make → proxy (recibe respuesta GPT y encola) —— //
 app.post('/respuesta-gpt', (req, res) => {
@@ -131,7 +147,6 @@ app.post('/respuesta-gpt', (req, res) => {
   console.log(`📥 Encolado ${subscriber_id} [${plataforma}]: ${respuesta}`);
   res.send('Encolado OK');
 });
-
 
 // —— Página de estado —— //
 app.get('/', (req, res) => {
