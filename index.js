@@ -1,5 +1,4 @@
 // index.js
-require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const path = require('path');
@@ -8,7 +7,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // —— Configuración ——
-const MAKE_WEBHOOK_URL = process.env.MAKE_WEBHOOK_URL;  
+const MAKE_WEBHOOK_URL = process.env.MAKE_WEBHOOK_URL;
 const MANYCHAT_API_KEY = process.env.MANYCHAT_API_KEY;
 
 // Flow namespaces
