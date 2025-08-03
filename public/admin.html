@@ -28,13 +28,17 @@ const bufferUsuarios     = {};        // buffers temporales por subscriber
 let colaMensajes         = [];        // cola de respuestas pendientes
 const waitingUsuarios    = new Set(); // espera de respuesta completa
 
+// Carpeta pública ubicada un nivel arriba de src
+const publicDir = path.join(__dirname, '..', 'public');
+
 // —— Middlewares ——
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(publicDir));
 
 // —— Endpoint Admin UI ——
 app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/admin.html'));
+  res.type('html');
+  res.sendFile(path.join(publicDir, 'admin.html'));
 });
 
 // —— Endpoint para bloquear usuario ——
@@ -103,7 +107,7 @@ app.post('/unblock', async (req, res) => {
   res.send(`Usuario ${usuario} desbloqueado y automatizaciones reanudadas`);
 });
 
-// —— Endpoint ManyChat → proxy (agrupa y reenvía a Make) ——
+// —— Endpoint ManyChat → proxy ——
 app.post('/webhook', (req, res) => {
   const { usuario, mensaje, id, teléfono, Plataforma } = req.body;
   if (!id || !mensaje) return res.status(400).send('Faltan datos');
@@ -137,7 +141,7 @@ app.post('/webhook', (req, res) => {
   res.status(200).send('Mensaje recibido y agrupando...');
 });
 
-// —— Endpoint Make → proxy (recibe respuesta GPT y encola) ——
+// —— Endpoint Make → proxy ——
 app.post('/respuesta-gpt', (req, res) => {
   const { subscriber_id, respuesta } = req.body;
   if (!subscriber_id || !respuesta) return res.status(400).send('Faltan campos');
@@ -154,10 +158,9 @@ app.post('/respuesta-gpt', (req, res) => {
   res.send('Encolado OK');
 });
 
-// —— Procesador de cola (cada 2s) ——
+// —— Procesador de cola — cada 2s
 setInterval(async () => {
   if (colaMensajes.length === 0) return;
-
   const { subscriber_id, respuesta, plataforma } = colaMensajes.shift();
   const usuario = subscriberName[subscriber_id];
   if (blockedUsers.has(usuario)) {
