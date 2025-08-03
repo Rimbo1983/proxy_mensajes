@@ -22,12 +22,13 @@ const RESUME_FLOW_NS = 'content20250803192542_067803';
 
 // —— Estructuras de datos ——
 const subscriberName      = {};        // subscriber_id → usuario
-const subscriberIdsByName = {};        // usuario → set de subscriber_id
+const subscriberIdsByName = {};        // usuario → array de subscriber_id
+const subscriberPlatform  = {};        // subscriber_id → plataforma
 const blockedUsers        = new Set(); // usuarios bloqueados por nombre
 const blockedIds          = new Set(); // subscriber_id bloqueados directamente
-const bufferUsuarios      = {};        // buffers por usuario
-let colaMensajes          = [];        // cola de respuestas pendientes
-const waitingUsuarios     = new Set(); // usuarios que esperan respuesta
+const bufferUsuarios      = {};        // buffers de mensajes por subscriber_id
+let colaMensajes          = [];        // cola de respuestas pendientes a ManyChat
+const waitingUsuarios     = new Set(); // subscriber_id que esperan respuesta completa
 
 app.use(express.json());
 
@@ -36,15 +37,14 @@ app.post('/block', async (req, res) => {
   const { usuario } = req.body;
   if (!usuario) return res.status(400).send('Falta campo usuario');
 
-  // Marcamos usuario bloqueado
   blockedUsers.add(usuario);
   console.log(`🚫 Usuario bloqueado: ${usuario}`);
 
-  // Resolución de IDs para este usuario
+  // Bloquear todos los IDs asociados
   const ids = subscriberIdsByName[usuario] || [];
   ids.forEach(id => blockedIds.add(id));
 
-  // Cancelar buffers y purgar cola por ID
+  // Cancelar buffers y purgar cola para esos IDs
   ids.forEach(id => {
     if (bufferUsuarios[id]?.timer) {
       clearTimeout(bufferUsuarios[id].timer);
@@ -52,21 +52,15 @@ app.post('/block', async (req, res) => {
       console.log(`🛑 Buffer cancelado para ${usuario} (${id})`);
     }
   });
-  colaMensajes = colaMensajes.filter(msg => {
-    if (ids.includes(msg.subscriber_id)) {
-      console.log(`🗑️ Mensaje en cola descartado para ${usuario} (${msg.subscriber_id})`);
-      return false;
-    }
-    return true;
-  });
+  colaMensajes = colaMensajes.filter(msg => !blockedIds.has(msg.subscriber_id));
 
-  // Disparar flow de pausa en ManyChat para cada ID
+  // Disparar flow de pausa en ManyChat
   const url = 'https://api.manychat.com/fb/sending/sendFlow';
-  const headers = { Authorization: `Bearer ${MANYCHAT_API_KEY}`, 'Content-Type':'application/json' };
+  const headers = { Authorization: `Bearer ${MANYCHAT_API_KEY}`, 'Content-Type': 'application/json' };
   await Promise.all(ids.map(id =>
     axios.post(url, { subscriber_id: id, flow_ns: PAUSE_FLOW_NS }, { headers })
       .then(() => console.log(`⏸️ Flow pausa enviado a ${id}`))
-      .catch(e => console.error(`❌ Error pausar ${id}`, e.response?.data || e.message))
+      .catch(err => console.error(`❌ Error pausar ${id}:`, err.response?.data || err.message))
   ));
 
   res.send(`Usuario ${usuario} bloqueado`);
@@ -80,17 +74,16 @@ app.post('/unblock', async (req, res) => {
   blockedUsers.delete(usuario);
   console.log(`✅ Usuario desbloqueado: ${usuario}`);
 
-  // Desbloqueamos todos los IDs asociados
   const ids = subscriberIdsByName[usuario] || [];
   ids.forEach(id => blockedIds.delete(id));
 
-  // Disparar flow de reanudación
+  // Disparar flow de reanudación en ManyChat
   const url = 'https://api.manychat.com/fb/sending/sendFlow';
-  const headers = { Authorization: `Bearer ${MANYCHAT_API_KEY}`, 'Content-Type':'application/json' };
+  const headers = { Authorization: `Bearer ${MANYCHAT_API_KEY}`, 'Content-Type': 'application/json' };
   await Promise.all(ids.map(id =>
     axios.post(url, { subscriber_id: id, flow_ns: RESUME_FLOW_NS }, { headers })
       .then(() => console.log(`▶️ Flow reanudar enviado a ${id}`))
-      .catch(e => console.error(`❌ Error reanudar ${id}`, e.response?.data || e.message))
+      .catch(err => console.error(`❌ Error reanudar ${id}:`, err.response?.data || err.message))
   ));
 
   res.send(`Usuario ${usuario} desbloqueado`);
@@ -101,16 +94,19 @@ app.post('/webhook', (req, res) => {
   const { usuario, mensaje, id, telefono, Plataforma } = req.body;
   if (!usuario || !mensaje || !id) return res.status(400).send('Faltan datos');
 
-  // Asociar nombre a ID
+  // Mapear estado del subscriber
   subscriberName[id] = usuario;
+  subscriberPlatform[id] = Plataforma;
   subscriberIdsByName[usuario] = subscriberIdsByName[usuario] || [];
   if (!subscriberIdsByName[usuario].includes(id)) subscriberIdsByName[usuario].push(id);
 
-  // Ignorar bloqueados por ID o nombre
+  // Ignorar bloqueados por nombre o ID
   if (blockedUsers.has(usuario) || blockedIds.has(id)) {
-    console.log(`🛑 Ignorado ${mensaje} de ${usuario} (${id})`);
+    console.log(`🛑 Ignorado mensaje de bloqueado ${usuario} (${id})`);
     return res.status(200).send('Usuario bloqueado');
   }
+
+  // Ignorar si está esperando
   if (waitingUsuarios.has(id)) {
     console.log(`🛑 Ignorado ${id}, esperando respuesta`);
     return res.sendStatus(204);
@@ -120,6 +116,7 @@ app.post('/webhook', (req, res) => {
   if (!bufferUsuarios[id]) bufferUsuarios[id] = { mensajes: [], timer: null };
   bufferUsuarios[id].mensajes.push(mensaje.trim());
 
+  // Lanzar timer si no existe
   if (!bufferUsuarios[id].timer) {
     bufferUsuarios[id].timer = setTimeout(async () => {
       const grouped = bufferUsuarios[id].mensajes.join('\n');
@@ -134,12 +131,12 @@ app.post('/webhook', (req, res) => {
       try {
         await axios.post(MAKE_WEBHOOK_URL,
           { usuario, mensaje: grouped, id, telefono, Plataforma },
-          { headers: { 'Content-Type':'application/json' } }
+          { headers: { 'Content-Type': 'application/json' } }
         );
         console.log(`📤 Enviado a Make: ${id}`);
         waitingUsuarios.add(id);
-      } catch (e) {
-        console.error(`❌ Error enviando a Make ${id}`, e.response?.data || e.message);
+      } catch (err) {
+        console.error(`❌ Error enviando a Make ${id}:`, err.response?.data || err.message);
       }
     }, 60000);
   }
@@ -153,8 +150,9 @@ app.post('/respuesta-gpt', (req, res) => {
   if (!subscriber_id || !respuesta) return res.status(400).send('Faltan campos');
 
   // Ignorar bloqueados
-  if (blockedIds.has(subscriber_id) || blockedUsers.has(subscriberName[subscriber_id])) {
-    console.log(`🛑 Descarta respuesta de bloqueado ${subscriberName[subscriber_id]} (${subscriber_id})`);
+  const usuario = subscriberName[subscriber_id];
+  if (blockedUsers.has(usuario) || blockedIds.has(subscriber_id)) {
+    console.log(`🛑 Descarta respuesta de bloqueado ${usuario} (${subscriber_id})`);
     return res.status(200).send('Usuario bloqueado');
   }
 
@@ -166,27 +164,28 @@ app.post('/respuesta-gpt', (req, res) => {
 
 // —— Procesador de cola (cada 2s) ——
 setInterval(async () => {
-  if (!colaMensajes.length) return;
+  if (colaMensajes.length === 0) return;
   const { subscriber_id, respuesta, plataforma } = colaMensajes.shift();
 
-  if (blockedIds.has(subscriber_id) || blockedUsers.has(subscriberName[subscriber_id])) {
-    console.log(`🛑 Envío cancelado para bloqueado ${subscriberName[subscriber_id]} (${subscriber_id})`);
+  const usuario = subscriberName[subscriber_id];
+  if (blockedUsers.has(usuario) || blockedIds.has(subscriber_id)) {
+    console.log(`🛑 Envío cancelado para bloqueado ${usuario} (${subscriber_id})`);
     return;
   }
 
   const flow_ns = FLOW_NS_MAP[plataforma] || FLOW_NS_MAP.default;
-  const headers = { Authorization: `Bearer ${MANYCHAT_API_KEY}`, 'Content-Type':'application/json' };
+  const headers = { Authorization: `Bearer ${MANYCHAT_API_KEY}`, 'Content-Type': 'application/json' };
 
   try {
     await axios.post('https://api.manychat.com/fb/subscriber/setCustomFieldByName',
-      { subscriber_id, field_name:'respuestaGPT', field_value:respuesta },
+      { subscriber_id, field_name: 'respuestaGPT', field_value: respuesta },
       { headers }
     );
     await axios.post('https://api.manychat.com/fb/sending/sendFlow', { subscriber_id, flow_ns }, { headers });
     console.log(`🚀 Flow ${flow_ns} enviado a ${subscriber_id}`);
     waitingUsuarios.delete(subscriber_id);
-  } catch (e) {
-    console.error(`❌ Error procesando ${subscriber_id}`, e.response?.data || e.message);
+  } catch (err) {
+    console.error(`❌ Error procesando ${subscriber_id}:`, err.response?.data || err.message);
   }
 }, 2000);
 
