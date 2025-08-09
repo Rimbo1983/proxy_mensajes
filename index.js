@@ -6,7 +6,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // —— Configuración —— //
-const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/41c6xuwixq15wxc1p8ugu6syon72ys7w';
+const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/4s7wx0ykfgbjal58ehkh9jb2xwr4ced6';
 const MANYCHAT_API_KEY = '807862065951550:771c99826f7011f4d47ab018e4207b60';
 
 // Mapa de Flows por plataforma
